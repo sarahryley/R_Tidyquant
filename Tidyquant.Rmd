@@ -1,0 +1,249 @@
+---
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: simplex
+---
+
+```{r setup, include=FALSE, fig.align='center'}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<br>
+<br>
+
+# Intro to Tidyquant in R
+
+[tidyquant](https://business-science.github.io/tidyquant/index.html) pulls data directly from several different financial and economic sources into R and integrates the core financial packages zoo, xts, quantmod, TTR, and PerformanceAnalytics with the [tidyverse](https://www.tidyverse.org/) syntax.
+
+<br>
+
+## Load libraries
+
+- `rm(list=ls())` clears all objects from the global environment
+- `gc()` frees up memory by cleaning up unused objects; important if you’re working on more memory-intensive analysis
+
+```{r load libraries, echo=TRUE, message=FALSE, warning=FALSE}
+
+rm(list=ls())
+gc()
+
+library(tidyquant)
+library(tidyverse)
+library(DataExplorer)
+
+```
+
+<br>
+
+## Pull data
+
+`tq_get()` pulls web-based financial data from different sources. Some require an API key.
+
+**Yahoo Finance**
+
+- `stock.prices` and `stock.prices.japan`: open, high, low, close, volume and adjusted stock prices for a stock symbol
+- `dividends`: dividends for a stock symbol
+- `splits`: split ratio for a stock symbol
+
+**FRED**
+
+- `economic.data`: economic data from [FRED](https://fred.stlouisfed.org/categories).
+
+**Requires API key and includes crypto and other more specialized and exotic datasets:***
+
+- [quandl](https://algotrading101.com/learn/quandl-guide/)
+- [tiingo](https://www.tiingo.com/)
+- [alphavantager](https://www.alphavantage.co/)
+- [rblpapi](https://github.com/Rblp/Rblpapi) accesses data and calculations from Bloomberg
+
+```{r tq_get_options}
+
+tq_get_options()
+
+```
+
+<br>
+
+### FRED
+
+Pull economic data from [FRED](https://fred.stlouisfed.org/categories) using the series code on the top-right of the chart:
+
+![](images/fred_china.png){width=50%}
+
+<br>
+
+#### Canada vs. China imports
+
+- Symbol for [U.S. Imports of Goods by Customs Basis from Canada](https://fred.stlouisfed.org/series/IMPCA): "IMPCA"
+- Symbol for [U.S. Imports of Goods by Customs Basis from China](https://fred.stlouisfed.org/series/IMPCH): "IMPCH"
+
+```{r canada}
+
+tq_get(c("IMPCA", "IMPCH"), get="economic.data") %>%
+  ggplot(aes(x=date, y=price, color=symbol))+
+  geom_line() +
+  ylab("Millions of Dollars")
+
+```
+
+<br>
+
+### Stock Prices
+
+- `open, high, low, and close:` the opening, high, low, and closing stock prices that day.
+- `[volume:](https://www.investopedia.com/articles/technical/02/010702.asp#:~:text=Volume%20measures%20the%20number%20of,prices%20fall%20on%20increasing%20volume.)` the number of trades that day. 
+- `adjusted stock price:` While the closing price simply refers to the cost of shares at the end of the day, the adjusted closing price takes dividends, stock splits, and new stock offerings into account.
+
+<br>
+
+#### Apple
+
+Jan. 1, 1980 is entered as the start date, but Apple went public on Dec. 12, 1980, so this is the earliest date pulled.
+
+```{r appl}
+
+tq_get("AAPL", get = "stock.prices", 
+                from = " 1980-01-01")
+
+```
+
+<br>
+
+#### Multiple stocks
+
+```{r multiple stock prices}
+
+stocks <- tq_get(c("NVDA", "AMZN", "META", "AAPL"),
+                get = "stock.prices",
+                from = "2024-01-01",
+                to = "2025-03-07")
+
+head(stocks)
+
+```
+
+For instance, you can see that Nvidia has a much higher volume of trades than the other tech stocks.
+
+```{r volume}
+
+stocks %>%
+  ggplot(aes(x=date, y=volume, color=symbol)) +
+  geom_line() +
+  theme_tq() +
+  #facet_wrap(~symbol, scales="free_y", ncol=2) +
+  scale_y_continuous(labels = scales::comma_format()) 
+    
+
+```
+
+<br>
+
+### Other tq options
+
+```{r fund}
+
+tq_exchange_options()
+
+tq_fund_source_options()
+
+tq_index_options()
+
+nyse <- tq_exchange("NYSE")
+
+head(nyse)
+
+```
+
+<br>
+
+## Mutating & Charts
+
+`tq_mutate` adds columns to the existing dataframe.
+`tq_transmute` works exactly like tq_mutate except it only returns the newly created columns. This is helpful when changing the periodicity in the data, such as from daily to quarterly returns, where the new columns would not have the same number of rows.
+
+**More Tutorials:**
+
+- Tidyquant's [Quantitative Analysis Package Integrations](https://business-science.github.io/tidyquant/articles/TQ02-quant-integrations-in-tidyquant.html) gives a more in-depth overview of functions and charts.
+- [PerformanceAnalytics for investors](https://www.r-bloggers.com/2019/02/performanceanalytics-an-indespensible-quant-tool-for-any-investor/)
+
+```{r stocks mutate}
+
+tq_mutate_fun_options()
+
+```
+
+<br>
+
+### Comparing Returns
+
+```{r returns}
+
+tq_get(c("NVDA", "META", "AAPL", "MSFT"),
+       get = "stock.prices",
+       from = "2024-01-01") %>%
+  group_by(symbol) %>%
+  tq_transmute(select = close, 
+               mutate_fun = periodReturn,
+               period = "quarterly",
+               type = "arithmetic") %>%
+  ggplot(aes(x=date, y=quarterly.returns, fill=symbol)) +
+  geom_col(position = "dodge") +
+  # facet_wrap(~ symbol, ncol = 2) +
+  theme_tq() + 
+  scale_fill_tq()
+
+```
+
+<br>
+
+### Bar Chart
+
+This is a type of [bar chart](https://business-science.github.io/tidyquant/reference/geom_chart.html) that plots the open, close, high, and low of the daily stock returns and color-codes the bars based on whether the day ended with the stock price up (blue) or down (red).
+
+![](images/barchart.png){width=50%}
+*Source: [HowToTrade.com](https://howtotrade.com/courses/forex-charts/forex-bar-charts/)*
+
+Tidyquant also creates candlestick charts.
+
+```{r bar chart}
+
+tq_get("NVDA", 
+       get = "stock.prices",
+       from = "2025-01-01",
+       to = "2025-03-07") %>%
+  ggplot(aes(x = date, y = close)) +
+  geom_barchart(aes(open = open, high = high, low = low, close = close)) +
+  labs(title = "Nvidia Daily Returns", y = "Closing Price", x = "") + 
+  theme_tq() 
+
+```
+<br>
+
+### Correlation Matrix
+
+```{r cor table}
+
+cor <- tq_get(c("META", "NVDA", # Tech
+                "GLD", "PPLT", # gold and platinum
+                "AAL", # American airlines
+                "CVS", # healthcare
+                "XOM",  "DBO"), # Exxon &
+       get = "stock.prices",
+       from = "2020-01-01") %>%
+  group_by(symbol) %>%
+  tq_transmute(select = close, 
+               mutate_fun = periodReturn,
+               period = "monthly",
+               type = "arithmetic") %>%
+  select(date, symbol, return = monthly.returns) %>%
+  spread(symbol, return)
+
+cor
+
+plot_correlation(na.omit(cor, maxcat = 5L))
+
+```
+
